@@ -9,6 +9,15 @@ import Data.Aeson (Value, FromJSON)
 
 --import Paths_javascript_bridge
 
+import Data.Char
+import System.Directory
+import Control.Exception
+import System.Environment
+import Control.Concurrent
+import System.IO
+import System.IO.Unsafe
+import Data.List
+
 main :: IO ()
 main = main_ 3000
 
@@ -387,3 +396,109 @@ title_nation some_function (Creation e t n r a) = pure (\t' n' -> Creation e t' 
     (some_function n)
 
 -}
+
+-- Found "Language.Sunroof" after a google search.
+-- Ironicially or unexpectedly a projected headed by Dr. Gill
+-- Solves the problems of generating /Javascript/ strings.
+-- Will just import this libarary if allowed and it is functional.
+
+-- Need help to import, on modifying src to include it.
+-- Will ask him if/when this becomes relevant.
+
+data Java where
+  Num :: Int -> Java
+  Plus :: Java -> Java -> Java
+  Minus :: Java -> Java -> Java
+  Mult :: Java -> Java -> Java
+  Div :: Java -> Java -> Java
+  Boolean :: Bool -> Java
+  And :: Java -> Java -> Java
+  Or :: Java -> Java -> Java
+  If :: Java -> Java -> Java -> Java
+  Return :: Java -> Java
+  deriving (Show,Eq)
+
+buildFunction :: Java -> (Maybe String)
+buildFunction (Num x) = Just $ show x
+buildFunction (Plus x y) = do
+    l <- buildFunction x;
+    r <- buildFunction y;
+    return $ l ++ " + " ++ r
+buildFunction (Minus x y) = do
+    l <- buildFunction x;
+    r <- buildFunction y;
+    return $ l ++ " - " ++ r
+buildFunction (Mult x y) = do
+    l <- buildFunction x;
+    r <- buildFunction y;
+    return $ l ++ " * " ++ r
+buildFunction (Div x y) = do
+    l <- buildFunction x;
+    r <- buildFunction y;
+    return $ l ++ " / " ++ r
+-- "function testfunction(a) { return a * 2; };"
+
+
+-- SideNote initializeObjectAbstraction is obsolete vs initializeObjectAbstraction2's better usage of remote monad
+-- Remove from code/comment out
+
+-- PYTHON BRIDGE
+-- Build Executable Python Code From Haskell for Remote Lensing
+-- Tasks to mirror:
+-- Creat a Python data structure of a sort - perhaps an array.
+-- Then add code to modify the data structure.
+data ValidPythonObject where
+    PythonGenerate :: String -> ValidPythonObject
+    PythonHolder :: forall b. Show b => String -> b -> ValidPythonObject
+    PythonNested :: String -> [ValidPythonObject] -> ValidPythonObject
+
+instance Show ValidPythonObject where
+    show (PythonHolder a b) ="'"++ a ++"'" ++ ": " ++ (show b)
+    show (PythonGenerate a) ="'"++ a ++"'"
+    show (PythonNested a b) ="'"++ a ++"'" ++ ": {" ++ sortValidPythonObjects b ++ "}"
+
+testPython :: [ValidPythonObject]
+testPython = [ (PythonHolder "name" "Meadow"), (PythonHolder "id" 321)] ++ [(PythonNested "nest" [(PythonHolder "extra" 1), (PythonHolder "extra2" 2), (PythonNested "nest2" [(PythonHolder "extra3" 3)])]), (PythonHolder "name2" "Lyndon") ]
+
+sortValidPythonObjects :: [ValidPythonObject] -> String
+sortValidPythonObjects (validObject:[]) = show validObject
+sortValidPythonObjects (validObject:rest) = show validObject ++ ", " ++ sortValidPythonObjects(rest)
+
+initializeObjectAbstractionPython :: String -> [ValidPythonObject] -> String
+initializeObjectAbstractionPython objectName validPythonObject = objectName ++ " = {" ++ sortValidPythonObjects(validPythonObject) ++ "}"
+
+
+nestPyth objectName = objectName ++ "['nest']"
+nest2Pyth objectName = objectName ++ "['nest2']"
+extra3Pyth objectName = objectName ++ "['extra3']"
+
+-- nestPyth >>> nest2Pyth >>> extra3Pyth 
+
+my_python_function = "def doub(u): return (2 * u)\n"
+
+-- D['emp1']['name']
+viewPython :: (String->String) -> String -> String
+viewPython unevaluated_remote_accessor objectName = unevaluated_remote_accessor objectName 
+
+--D['emp3']['name'] = 'Max'
+setPython :: (String->String) -> String -> String -> String 
+setPython unevaluated_remote_accessor new_item objectName = (unevaluated_remote_accessor objectName) ++ " = " ++ new_item
+
+overPython :: (String -> String) -> String -> String -> String 
+overPython unevaluated_remote_accessor my_function objectName = do
+    let item = viewPython unevaluated_remote_accessor objectName
+    let new_item = my_function ++ "(" ++ item ++ ")"
+    setPython unevaluated_remote_accessor new_item objectName
+
+
+createPythonFile :: [String] -> String -> IO()
+createPythonFile myData myFileName = (try (createDirectoryIfMissing False ("GeneratedPython")) :: IO (Either SomeException ())) >>= \result ->
+                                     case result of
+                                        Right _ ->  let myFile = myFileName ++ ".py" in 
+                                                    (putStr (myFile ++ "\n")) >>= \t1 ->
+                                                    getCurrentDirectory >>= \current ->
+                                                    let myFilePath = current ++ "/" ++ "GeneratedPython" ++ "/" ++ myFile in
+                                                    (putStr (myFilePath ++ "\n")) >>= \t2 ->
+                                                    (try (writeFile myFilePath $ unlines myData) :: IO (Either SomeException ())) >>= \y -> pure ()
+                                        Left _ -> pure ()
+                                    
