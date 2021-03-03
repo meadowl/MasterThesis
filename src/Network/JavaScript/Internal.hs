@@ -20,6 +20,7 @@ module Network.JavaScript.Internal
   , RemoteValue(..)
   , var
   , var_text
+  , create_var
     -- * (Applicative) Packets
   , Packet(..)
   , AF(..)
@@ -105,6 +106,9 @@ var (RemoteValue n) = JavaScript $ "jsb.rs[" <> pack (show n) <> "]"
 
 var_text :: RemoteValue a -> String
 var_text (RemoteValue n) = "jsb.rs[" <> (show n) <> "]"
+
+create_var :: Int -> RemoteValue Int
+create_var a = (RemoteValue a)
 
 ------------------------------------------------------------------------------
 -- Framework types for Applicative and Monad

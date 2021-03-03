@@ -17,7 +17,7 @@ module Network.JavaScript
   , constructor
     -- * Remote Applicative and Monads, and classes for building them
   , Packet
-  , RemoteMonad
+  , RemoteMonad(..)
   , Command()
   , Procedure()
     -- * Remote Values
@@ -28,6 +28,7 @@ module Network.JavaScript
     -- * JavaScript builders
   , var
   , var_text
+  , create_var
   , value
   , call
   , number
@@ -42,6 +43,8 @@ module Network.JavaScript
   , start
   , Engine
   , Application
+  , Primitive(..)
+  , M(..)
   ) where
 
 import Control.Applicative(liftA2)

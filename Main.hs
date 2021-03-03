@@ -1,4 +1,7 @@
-{-# LANGUAGE OverloadedStrings, GADTs, ScopedTypeVariables #-}
+-- stack
+-- package QuickCheck
+
+{-# LANGUAGE OverloadedStrings, GADTs, ScopedTypeVariables, FlexibleInstances #-}
 
 module Main where
 
@@ -18,6 +21,8 @@ import System.IO
 import System.IO.Unsafe
 import Data.List
 
+import Test.QuickCheck
+
 main :: IO ()
 main = main_ 3000
 
@@ -25,7 +30,8 @@ main_ :: Int -> IO ()
 main_ i = do
   -- dataDir <- return "." -- use for debugging
   scotty i $ do
-    middleware $ start app  
+    --middleware $ start app  
+    middleware $ start exercise1
     get "/" $ file $ "Main.html"
 
 app :: Engine -> IO ()
@@ -502,3 +508,213 @@ createPythonFile myData myFileName = (try (createDirectoryIfMissing False ("Gene
                                                     (try (writeFile myFilePath $ unlines myData) :: IO (Either SomeException ())) >>= \y -> pure ()
                                         Left _ -> pure ()
                                     
+-- Rules of Lenses
+
+-- Get-Put
+-- Forall S. put S (get S) = S 
+-- forall $ \whole -> set l (view l whole) whole == whole
+-- over2 some_composite_field2 (\x -> (x + 1::Double)) newperson
+prop_get_put x = x
+
+-- Put-Get
+-- Forall S V. get (put s v) v
+-- forall $ \whole part -> view l (set l part whole) == part
+
+-- Put-Put
+-- Forall S V v. put (put s v) V = put s V
+-- forall $ \whole part1 part2 -> set l part2 (set l part1 whole) = set l part2 whole
+
+-- Code Taken from Websites for Learning Quick Check
+prop_reverse :: [Int] -> Bool
+prop_reverse xs = reverse (reverse xs) == xs
+
+instance Show (Int -> Char) where
+  show _ = "Function: (Int -> Char)"
+
+instance Show (Char -> Maybe Double) where
+  show _ = "Function: (Char -> Maybe Double)"
+
+prop_MapMap :: (Int -> Char) -> (Char -> Maybe Double) -> [Int] -> Bool
+prop_MapMap f g xs = map g (map f xs) == map (g . f) xs
+
+
+--view2 :: (Monad m, Command m, Procedure m, FromJSON b) => (String -> String) -> (RemoteValue a) -> m b
+instance Show (String -> String) where
+    show _ = "Function: (String -> String)"
+
+instance Arbitrary (RemoteValue Int) where
+    arbitrary = do
+        x <- elements [1..1000]
+        return $ create_var x
+
+-- More Cracking Open Internal.HS
+-- create_var :: Int -> RemoteValue Int
+-- create_var a = (RemoteValue a)
+
+-- ((M Primitive) Bool)
+instance Testable (RemoteMonad Bool) where
+    --property (RemoteMonad True) = property True
+    --property (RemoteMonad False) = property False
+    property (RemoteMonad a) = property True
+
+-- I would like to write something along the lines of:
+-- property RemoteMonad True = propery True
+-- property RemoteMonad False = property True
+-- Error Shown Below from Haskell
+
+{-|
+ error:
+    • Couldn't match expected type ‘M Primitive Bool’
+                  with actual type ‘Bool’
+    • In the pattern: False
+      In the pattern: RemoteMonad False
+      In an equation for ‘property’:
+          property (RemoteMonad False) = property False
+    |
+556 |     property (RemoteMonad False) = property False
+
+-}
+
+prop_test :: (String -> String) -> (RemoteValue Int) -> (RemoteMonad Bool)
+prop_test fieldAccessor remoteObject = do
+    x :: String <- view2 fieldAccessor remoteObject
+    pure $ x == x
+
+{-|
+
+*Main> quickCheck prop_test
+
+<interactive>:7:1: error:
+    • No instance for (Arbitrary (RemoteValue a0))
+        arising from a use of ‘quickCheck’
+    • In the expression: quickCheck prop_test
+      In an equation for ‘it’: it = quickCheck prop_test
+
+-}
+
+{-|
+
+*Main> quickCheck prop_test
+
+<interactive>:4:1: error:
+    • No instance for (Testable (RemoteMonad Bool))
+        arising from a use of ‘quickCheck’
+    • In the expression: quickCheck prop_test
+      In an equation for ‘it’: it = quickCheck prop_test
+
+-}
+
+----------------------------------------
+-- FP Complete Lens Exercise 1
+----------------------------------------
+
+address_ :: String -> String -> [ValidObject]
+address_ street city = [ (Holder "street" street), (Holder "city" city) ]
+
+people_ :: String -> String -> String -> Int -> [ValidObject]
+people_ street city name age = [ (Holder "name" name), (Nested "address" (address_ street city)), (Holder "age" age) ]
+
+address objectName = objectName ++ ".address"
+street objectName = objectName ++ ".street"
+city objectName = objectName ++ ".city"
+name objectName = objectName ++ ".name"
+age objectName = objectName ++ ".age"
+
+alice :: [ValidObject]
+alice = people_ "Hollywood" "Los Angeles" "Alice" 30
+
+wilshire :: String
+wilshire = "\"Wilshire Blvd\"" -- Remember to use \" for javascript string
+
+aliceWilshire :: RemoteValue a -> RemoteMonad (RemoteValue a)
+aliceWilshire newperson = set2 (address >>> street) wilshire newperson
+
+getStreet :: RemoteValue a -> (RemoteMonad String)
+getStreet newperson = view2 (address >>> street) newperson
+
+birthday :: RemoteValue Int -> RemoteMonad (RemoteValue Int)
+birthday newperson = over2 age (\x -> (x + 1::Int)) newperson
+
+getAge :: RemoteValue a -> (RemoteMonad Int)
+getAge newperson = view2 age newperson
+
+exercise1 :: Engine -> IO ()
+exercise1 eng = do
+  send eng $ do
+    command $ call "console.log" [string "starting..."]
+    render $ "Exercise1"
+
+    newperson <- initializeObjectAbstraction2 "alice" alice
+    aliceWilshire newperson
+
+    mystreet_person <- getStreet newperson
+    birthday newperson
+    herNewAge <- getAge newperson
+
+    render $ "mystreet_person: " ++ mystreet_person
+    render $ "herNewAge: " ++ show herNewAge
+
+-- notice not possible to create new object
+-- remote lensing requires live objects to generate
+-- and does not create a new object, javascript modifies the existing objects
+
+{-|
+
+https://www.fpcomplete.com/haskell/tutorial/lens/
+
+data Address = Address
+  { _street :: !Text
+  , _city :: !Text
+  }
+
+makeLenses ''Address
+
+data Person = Person
+  { _name :: !Text
+  , _address :: !Address
+  , _age :: !Int
+  }
+
+makeLenses ''Person
+
+hollywood :: Text
+hollywood = "Hollywood Blvd"
+
+alice :: Person
+alice = Person
+  { _name = "Alice"
+  , _address = Address
+      { _street = hollywood
+      , _city = "Los Angeles"
+      }
+  , _age = 30
+  }
+
+wilshire :: Text
+wilshire = "Wilshire Blvd"
+
+aliceWilshire :: Person
+aliceWilshire = set (address.street) wilshire alice
+
+getStreet :: Person -> Text
+getStreet = view (address.street)
+--getStreet = (^. address.street)
+
+-- | Increase age by 1
+birthday :: Person -> Person
+birthday = over age (+ 1)
+--birthday = age %~ (+ 1)
+
+getAge :: Person -> Int
+getAge = view age
+
+main :: IO ()
+main = hspec $ do
+  it "lives on Wilshire" $
+    _street (_address aliceWilshire) `shouldBe` wilshire
+  it "getStreet works" $
+    getStreet alice `shouldBe` hollywood
+  it "birthday" $
+    getAge (birthday alice) `shouldBe` _age alice + 1
+
+-}
