@@ -10,6 +10,12 @@ import Network.JavaScript
 import Data.Text.Lazy (Text, pack, unpack)
 import Data.Aeson (Value, FromJSON)
 
+-- Sqlite-simple
+import Control.Applicative
+import Database.SQLite.Simple
+import Database.SQLite.Simple.FromRow
+import Database.SQLite.Simple.Types
+import qualified Data.Text as T
 --import Paths_javascript_bridge
 
 import Data.Char
@@ -20,11 +26,12 @@ import Control.Concurrent
 import System.IO
 import System.IO.Unsafe
 import Data.List
+import Data.Int
 
 import Test.QuickCheck
 
-main :: IO ()
-main = main_ 3000
+--main :: IO ()
+--main = main_ 3000
 
 main_ :: Int -> IO ()
 main_ i = do
@@ -653,10 +660,28 @@ exercise1 eng = do
 
     render $ "mystreet_person: " ++ mystreet_person
     render $ "herNewAge: " ++ show herNewAge
+  send eng $ render $ "Exercise1"
+
+-- Illistrative Example
+
+-- Need exmaple with work, and without my work
+-- Compeling example, why it makes things less work
+-- Query and Updates - SQL
 
 -- notice not possible to create new object
 -- remote lensing requires live objects to generate
 -- and does not create a new object, javascript modifies the existing objects
+
+-- Lenses are a solution to bijective transformations
+-- And a method of dealing with dictionary problems
+
+-- Write a document 10 to 12 pages
+-- Short Version of Thesis
+-- Writing summary
+-- Write down things of importance
+
+-- Tell story with what I've done
+
 
 {-|
 
@@ -718,3 +743,83 @@ main = hspec $ do
     getAge (birthday alice) `shouldBe` _age alice + 1
 
 -}
+
+data TestField = TestField Int String deriving (Show)
+
+instance FromRow TestField where
+  fromRow = TestField <$> field <*> field
+
+main :: IO ()
+main = do
+  conn <- open "test.db"
+  execute conn "INSERT INTO test (str) VALUES (?)"
+    (Only ("test string 2" :: String))
+  r <- query_ conn "SELECT * from test" :: IO [TestField]
+  mapM_ print r
+  close conn
+
+--http://www.mchaver.com/posts/2017-06-28-sqlite-simple.html
+
+data Person = Person {
+    personId   :: Int64
+    , personName :: Text
+    , personAge  :: Text
+    } deriving (Eq,Read,Show)
+
+instance FromRow Person where
+  fromRow = Person <$> field <*> field <*> field
+
+-- when inserting a new Person, ignore personId. SQLite will provide it for us.
+instance ToRow Person where
+  toRow (Person _pId pName pAge) = toRow (pAge, pName)
+
+runPersonExample :: IO ()
+runPersonExample = do
+  conn <- open "test.db"
+  execute_ conn "CREATE TABLE IF NOT EXISTS people (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, age TEXT)"
+  execute conn "INSERT INTO people (name, age) VALUES (?,?)" (Person 0 "Justina" "15")
+  execute conn "INSERT INTO people (name, age) VALUES (?,?)" (Person 0 "Jordi" "11")
+  people <- query_ conn "SELECT id, name, age from people" :: IO [Person]
+  close conn
+  print people
+
+insertLite :: Connection -> String -> String -> Only String -> IO ()
+insertLite conn mytable parameters item = execute conn ("INSERT INTO mytable (parameters) VALUES (?) WHERE mytable = :mytable AND parameters = :parameters" [":mytable" := mytable, ":parameters" := parameters]) item
+
+--viewSQLite :: (String->String) -> _ -> _
+--viewSQLite unevaluated_remote_accessor objectName = do
+--    query_ conn "SELECT id, name, age from people"
+
+setSQLite :: (String->String) -> String -> Connection -> IO()
+setSQLite unevaluated_remote_accessor new_item conn = insertLite conn "person" "name" (Only "Jackson")
+
+    --execute conn "INSERT INTO people (name, age) VALUES (?,?)" (Person 0 "Justina" "15")
+
+--overSQLite :: (String -> String) -> _ -> _ -> _ 
+--overSQLite unevaluated_remote_accessor my_function objectName = do
+--    item <- viewSQLite unevaluated_remote_accessor objectName
+--    let new_item = show $ my_function item
+--    setSQLite unevaluated_remote_accessor new_item objectName
+
+{-
+view2 :: (Monad m, Command m, Procedure m, FromJSON b) => (String -> String) -> (RemoteValue a) -> m b
+view2 unevaluated_remote_accessor objectName = do
+    g <- constructor $ JavaScript $ pack $ unevaluated_remote_accessor (var_text objectName)
+    procedure $ var g
+
+set2 :: Command f => (String -> String) -> String -> (RemoteValue a) -> f (RemoteValue a)
+set2 unevaluated_remote_accessor new_item objectName = constructor $ JavaScript $ pack $ (unevaluated_remote_accessor (var_text objectName)) ++ " = " ++ new_item
+
+over2 :: (Monad m, Command m, Procedure m, FromJSON t, Show a) =>
+    (String -> String) -> (t -> a) -> (RemoteValue a) -> m (RemoteValue a)
+over2 unevaluated_remote_accessor my_function objectName = do
+    item <- view2 unevaluated_remote_accessor objectName
+    let new_item = show $ my_function item
+    set2 unevaluated_remote_accessor new_item objectName
+-}
+
+-- SQlite doesn't support nested tables, so nesting dictionaries with in each other
+-- isn't possible unless  "Parent/Child Tables are suppoted."
+-- Does Haskell SQlite support this automatic generation?
+-- Found higher level package like Groundhog, can't find information
+-- specifically on Sqlite simple, I don't think that level of functionatlity was added.
