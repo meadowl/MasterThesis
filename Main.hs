@@ -1,7 +1,7 @@
 -- stack
 -- package QuickCheck
 
-{-# LANGUAGE OverloadedStrings, GADTs, ScopedTypeVariables, FlexibleInstances #-}
+{-# LANGUAGE OverloadedStrings, GADTs, ScopedTypeVariables, FlexibleInstances, RankNTypes #-}
 
 module Main where
 
@@ -233,16 +233,17 @@ over unevaluated_remote_accessor my_function objectName = do
 initializeObjectAbstraction2 :: forall f a. Command f => String -> [ValidObject] -> f (RemoteValue a)
 initializeObjectAbstraction2 objectName validObjects = constructor $ JavaScript $ pack $ objectName ++ " = {" ++ sortValidObjects(validObjects) ++ "}"--"var " ++ objectName ++ " = {" ++ sortValidObjects(validObjects) ++ "}"
 
-view2 :: (Monad m, Command m, Procedure m, FromJSON b) => (String -> String) -> (RemoteValue a) -> m b
+--view2 :: (Monad m, Command m, Procedure m, FromJSON b) => (String -> String) -> (RemoteValue a) -> m b
+view2 :: (FromJSON b) => (String -> String) -> (RemoteValue a) -> (RemoteMonad b)
 view2 unevaluated_remote_accessor objectName = do
     g <- constructor $ JavaScript $ pack $ unevaluated_remote_accessor (var_text objectName)
     procedure $ var g
 
-set2 :: Command f => (String -> String) -> String -> (RemoteValue a) -> f (RemoteValue a)
+set2 :: (String -> String) -> String -> (RemoteValue a) -> RemoteMonad (RemoteValue a)
 set2 unevaluated_remote_accessor new_item objectName = constructor $ JavaScript $ pack $ (unevaluated_remote_accessor (var_text objectName)) ++ " = " ++ new_item
 
-over2 :: (Monad m, Command m, Procedure m, FromJSON t, Show a) =>
-    (String -> String) -> (t -> a) -> (RemoteValue a) -> m (RemoteValue a)
+over2 :: (FromJSON t, Show a) =>
+    (String -> String) -> (t -> a) -> (RemoteValue a) -> RemoteMonad (RemoteValue a)
 over2 unevaluated_remote_accessor my_function objectName = do
     item <- view2 unevaluated_remote_accessor objectName
     let new_item = show $ my_function item
@@ -326,7 +327,7 @@ tester listStringFunctions objectName = JavaScript <$> (pack <$> (listStringFunc
 tester2 :: forall a f . Command f => [JavaScript] -> [f (RemoteValue a)]
 tester2 javalist =  constructor <$> javalist
 
-new_view :: (Monad m, Command m, Procedure m, FromJSON b) => [(String -> String)] -> (RemoteValue a) -> m [b]
+new_view :: (FromJSON b) => [(String -> String)] -> (RemoteValue a) -> RemoteMonad [b]
 new_view list obj = case list of
     (x:[]) -> do
         z <- view2 x obj
@@ -336,7 +337,7 @@ new_view list obj = case list of
         z <- view2 x obj
         pure $ z : y
 
-trav_view :: (Monad m, Command m, Procedure m, FromJSON b) => [(String -> String)] -> RemoteValue a -> RemoteMonad [m b]
+trav_view :: (FromJSON b) => [(String -> String)] -> RemoteValue a -> RemoteMonad [RemoteMonad b]
 trav_view list obj = case list of
     x:[] -> do
         pure [view2 x obj]
@@ -344,7 +345,7 @@ trav_view list obj = case list of
         y <- trav_view xs obj
         pure $ [view2 x obj] ++ y
 
-trav_set :: (Monad f, Command f) => [(String -> String)] -> String -> (RemoteValue a) -> f (RemoteValue a)
+trav_set :: [(String -> String)] -> String -> (RemoteValue a) -> RemoteMonad (RemoteValue a)
 trav_set list item obj = case list of
     x:[] -> do
         set2 x item obj
@@ -352,8 +353,8 @@ trav_set list item obj = case list of
         trav_set xs item obj
         set2 x item obj
 
-trav_over:: (Monad m, Command m, Procedure m, FromJSON t, Show a) =>
-    [(String -> String)] -> (t -> a) -> (RemoteValue a) -> m (RemoteValue a)
+trav_over:: (FromJSON t, Show a) =>
+    [(String -> String)] -> (t -> a) -> (RemoteValue a) -> RemoteMonad (RemoteValue a)
 trav_over list my_function obj = case list of
     x:[] -> do
         item <- view2 x obj
@@ -783,15 +784,19 @@ runPersonExample = do
   close conn
   print people
 
-insertLite :: Connection -> String -> String -> Only String -> IO ()
-insertLite conn mytable parameters item = execute conn ("INSERT INTO mytable (parameters) VALUES (?) WHERE mytable = :mytable AND parameters = :parameters" [":mytable" := mytable, ":parameters" := parameters]) item
+--insertLite :: Connection -> String -> String -> Only String -> IO ()
+--insertLite conn mytable parameters item = execute conn ("INSERT INTO mytable (parameters) VALUES (?) WHERE mytable = :mytable AND parameters = :parameters" [":mytable" := mytable, ":parameters" := parameters]) item
+
+-- Write the theoretic method
+-- Give two or three examples
+-- And show how they're working
 
 --viewSQLite :: (String->String) -> _ -> _
 --viewSQLite unevaluated_remote_accessor objectName = do
 --    query_ conn "SELECT id, name, age from people"
 
-setSQLite :: (String->String) -> String -> Connection -> IO()
-setSQLite unevaluated_remote_accessor new_item conn = insertLite conn "person" "name" (Only "Jackson")
+--setSQLite :: (String->String) -> String -> Connection -> IO()
+--setSQLite unevaluated_remote_accessor new_item conn = insertLite conn "person" "name" (Only "Jackson")
 
     --execute conn "INSERT INTO people (name, age) VALUES (?,?)" (Person 0 "Justina" "15")
 
@@ -823,3 +828,66 @@ over2 unevaluated_remote_accessor my_function objectName = do
 -- Does Haskell SQlite support this automatic generation?
 -- Found higher level package like Groundhog, can't find information
 -- specifically on Sqlite simple, I don't think that level of functionatlity was added.
+
+-- query
+
+data RemoteLens a b = RemoteLens {
+    remoteview ::  (FromJSON b) => (String -> String) -> (RemoteValue a) -> (RemoteMonad b)
+    , remoteset :: (String -> String) -> String -> (RemoteValue a) -> RemoteMonad (RemoteValue a)}
+
+a_Lens :: RemoteLens a b
+a_Lens = RemoteLens {
+    remoteview = view2
+    , remoteset = set2}
+
+applyview :: FromJSON b => RemoteLens a b -> (String -> String) -> RemoteValue a -> RemoteMonad b
+applyview (RemoteLens viewer setter) = viewer
+
+applyset :: RemoteLens a b -> (String -> String) -> String -> RemoteValue a -> RemoteMonad (RemoteValue a)
+applyset (RemoteLens viewer setter) = setter
+
+recover_set :: (String -> String) -> String -> RemoteValue a -> RemoteMonad (RemoteValue a)
+recover_set = applyset a_Lens
+
+recover_view :: (FromJSON b) =>  (String -> String) -> RemoteValue a -> RemoteMonad b
+recover_view = applyview a_Lens
+
+-- Only one problem the (String -> String) still exists
+
+{-
+address objectName = objectName ++ ".address"
+street objectName = objectName ++ ".street"
+city objectName = objectName ++ ".city"
+name objectName = objectName ++ ".name"
+age objectName = objectName ++ ".age"
+
+getStreet :: RemoteValue a -> (RemoteMonad String)
+getStreet newperson = view2 (address >>> street) newperson
+-}
+
+data RL_ObjectA  = RL_ObjectA {
+    rl_address :: String -> String
+    , rl_street :: String -> String
+    , rl_city :: String -> String
+    , rl_name :: String -> String
+    , rl_age :: String -> String}
+    deriving (Show)
+
+a_Object :: RL_ObjectA
+a_Object = RL_ObjectA {
+    rl_address = address
+    , rl_street = street
+    , rl_city = city
+    , rl_name = name
+    , rl_age = age}
+
+getname3 :: FromJSON b => RemoteValue a -> RemoteMonad b
+getname3 newperson = view2 (rl_name a_Object) newperson
+
+remote_view' :: FromJSON b => RL_ObjectA -> RemoteValue a -> RemoteMonad b
+remote_view' object newperson = view2 (rl_name object) newperson
+
+applyname :: RL_ObjectA -> String -> String
+applyname (RL_ObjectA a b c d e) = d
+
+--

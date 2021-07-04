@@ -187,10 +187,24 @@ data BasicLens a b = BasicLens {
     viewer :: (a,b) -> a
     , setter :: (a,b) -> a -> (a,b)}
 
-setLens :: BasicLens a b
-setLens = BasicLens {
+a_Lens :: BasicLens a b
+a_Lens = BasicLens {
     viewer = view_a
     , setter = set_a}
 
 applyview ::  BasicLens a b -> (a, b) -> a
-applyview (BasicLens viewer setter) s = viewer s
+applyview (BasicLens viewer setter) = viewer
+
+applyset ::  BasicLens a b -> (a,b) -> a -> (a,b)
+applyset (BasicLens viewer setter) = setter
+
+recovered_set_a :: (a,b) -> a -> (a,b)
+recovered_set_a = applyset a_Lens
+
+recovered_view_a :: (a,b) -> a
+recovered_view_a = applyview a_Lens
+
+-- *Main> recovered_set_a (2,3) 4
+-- (4,3)
+-- *Main> recovered_view_a (2,3)
+-- 2
