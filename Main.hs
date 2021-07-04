@@ -891,3 +891,8 @@ applyname :: RL_ObjectA -> String -> String
 applyname (RL_ObjectA a b c d e) = d
 
 --
+
+type RemoteLenss = String -> String
+
+getname4 :: (FromJSON b) => RemoteLenss -> RemoteValue a -> RemoteMonad b
+getname4 accessor newperson = view2 accessor newperson
