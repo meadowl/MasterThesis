@@ -208,3 +208,22 @@ recovered_view_a = applyview a_Lens
 -- (4,3)
 -- *Main> recovered_view_a (2,3)
 -- 2
+set4 :: forall s a. MyLens s a -> (a -> s -> s)
+set4 ln x s = runIdentity (ln (set_fld x) s)
+
+view4 :: MyLens s a -> (s -> a)
+view4 ln s = runConst (ln Const s)
+
+-- type MyLens s a = forall f. Functor f => (a -> f a) -> s -> f s
+
+a_ln :: MyLens (a,b) a
+a_ln my_functor (a,b) = (\a'->  (a',b)) <$> (my_functor a)
+
+a_view :: (a,b) -> a
+a_view = view' a_ln
+
+a_set :: a -> (a,b) -> (a,b)
+a_set = set' a_ln
+
+-- (a,b) -> a
+-- a -> (a,b) -> (a,b)
